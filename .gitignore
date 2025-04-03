@@ -1,0 +1,19 @@
+# Byte-compiled
+__pycache__/
+.vs
+
+# Environment
+venv
+
+# DataSet
+data/
+dataSet_test/
+dataSet_test_640/
+Model_640_Tank/
+
+# Model
+*.pt
+
+# TestModel
+results/
+frames/
