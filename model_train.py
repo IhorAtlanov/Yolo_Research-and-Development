@@ -12,11 +12,11 @@ def train_yolo(data_yaml_path, epochs=50, batch_size=16, img_size=640):
         imgsz=img_size,              # розмір зображення
         save=True,                   # збереження результатів
         device='0',                  # використання GPU (якщо доступний)
-        workers=4,                   # кількість workers для завантаження даних
+        workers=6,                   # кількість workers для завантаження даних
         project='yolo_training',     # ім'я проекту
         name='exp',                  # ім'я експерименту
         exist_ok=True,               # перезаписати попередній експеримент
-        patience=20,                 # раннє зупинення, якщо немає покращення 20 епох
+        patience=10,                 # раннє зупинення, якщо немає покращення 20 епох
         pretrained=False,             # використання попередньо навченої моделі
         augment=True                 # аугментіція на льоту (on-the-fly)
     )
@@ -36,7 +36,7 @@ def evaluate_yolo_model(model_path, data_yaml_path):
 # Приклад використання
 if __name__ == "__main__":
     # Шлях до файлу data.yaml
-    data_yaml_path = "D:\\diplom\\dataSet_test_640\\data.yaml"
+    data_yaml_path = "D:\\diplom\\dataSet_test_640\\dataset.yaml"
     
     # Тренування моделі
     results = train_yolo(
@@ -56,5 +56,5 @@ if __name__ == "__main__":
     
     # Інференс (виявлення об'єктів) на одному зображенні
     model = YOLO(best_model_path)
-    results = model.predict("D:\\diplom\\data\\Tanks\\19.jpg", save=True, conf=0.25)
+    results = model.predict("D:\\diplom\\data\\TANK\\Tanks\\19.jpg", save=True, conf=0.25)
     print(f"Виявлені об'єкти: {results[0].boxes}")

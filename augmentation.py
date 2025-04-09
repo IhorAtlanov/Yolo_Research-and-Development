@@ -63,7 +63,10 @@ def mirror_image(image):
     return cv2.flip(image, 1)  # 1 for horizontal flip
 
 def apply_crop(image, min_scale=0.0, max_scale=0.2):
-    """Apply random crop to the image."""
+    """
+    Apply random crop to the image while preserving original dimensions.
+    Uses border reflection to maintain the original image size.
+    """
     height, width = image.shape[:2]
     
     # Calculate scale factor
@@ -84,14 +87,27 @@ def apply_crop(image, min_scale=0.0, max_scale=0.2):
     else:
         start_y = 0
     
-    # Perform crop
+    # Get the cropped portion
     cropped = image[start_y:height-crop_height+start_y, start_x:width-crop_width+start_x]
+    cropped_height, cropped_width = cropped.shape[:2]
     
-    # Resize back to original dimensions
-    return cv2.resize(cropped, (width, height), interpolation=cv2.INTER_LINEAR)
+    # Calculate padding needed
+    pad_top = start_y
+    pad_bottom = height - (cropped_height + start_y)
+    pad_left = start_x
+    pad_right = width - (cropped_width + start_x)
+    
+    # Apply padding with reflection to maintain original size
+    result = cv2.copyMakeBorder(
+        cropped, 
+        pad_top, pad_bottom, pad_left, pad_right,
+        cv2.BORDER_REFLECT
+    )
+    
+    return result
 
 def apply_rotation(image, min_angle=-15, max_angle=15):
-    """Apply random rotation to the image."""
+    """Apply random rotation to the image while preserving original dimensions."""
     height, width = image.shape[:2]
     angle = random.uniform(min_angle, max_angle)
     
@@ -99,13 +115,13 @@ def apply_rotation(image, min_angle=-15, max_angle=15):
     center = (width // 2, height // 2)
     rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
     
-    # Apply rotation
+    # Apply rotation with border reflection to maintain original size
     rotated = cv2.warpAffine(image, rotation_matrix, (width, height), 
                             flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
     return rotated
 
 def apply_shift(image, horizontal_shift=0.15, vertical_shift=0.15):
-    """Apply random shift to the image."""
+    """Apply random shift to the image while preserving original dimensions."""
     height, width = image.shape[:2]
     
     # Calculate shift amount
@@ -115,13 +131,13 @@ def apply_shift(image, horizontal_shift=0.15, vertical_shift=0.15):
     # Create translation matrix
     translation_matrix = np.float32([[1, 0, tx], [0, 1, ty]])
     
-    # Apply translation
+    # Apply translation with border reflection to maintain original size
     shifted = cv2.warpAffine(image, translation_matrix, (width, height), 
                             borderMode=cv2.BORDER_REFLECT)
     return shifted
 
 def apply_hue_shift(image, min_hue=-25, max_hue=25):
-    """Apply random hue shift to the image."""
+    """Apply random hue shift to the image without changing dimensions."""
     # Convert to HSV
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
     
@@ -134,7 +150,7 @@ def apply_hue_shift(image, min_hue=-25, max_hue=25):
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 def apply_brightness(image, min_brightness=-0.25, max_brightness=0.25):
-    """Apply random brightness adjustment to the image."""
+    """Apply random brightness adjustment to the image without changing dimensions."""
     brightness = random.uniform(min_brightness, max_brightness)
     
     if brightness > 0:
@@ -145,7 +161,7 @@ def apply_brightness(image, min_brightness=-0.25, max_brightness=0.25):
         return np.clip(image * (1 + brightness), 0, 255).astype(np.uint8)
 
 def apply_exposure(image, min_exposure=-0.25, max_exposure=0.25):
-    """Apply random exposure adjustment to the image."""
+    """Apply random exposure adjustment to the image without changing dimensions."""
     exposure = random.uniform(min_exposure, max_exposure)
     
     # Convert to HSV
@@ -159,7 +175,7 @@ def apply_exposure(image, min_exposure=-0.25, max_exposure=0.25):
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 def apply_noise(image, max_noise_percentage=0.05):
-    """Apply random noise to the image."""
+    """Apply random noise to the image without changing dimensions."""
     noise_percentage = random.uniform(0, max_noise_percentage)
     
     # Create noise matrix
@@ -180,6 +196,7 @@ def apply_noise(image, max_noise_percentage=0.05):
 def apply_augment_plus(image, min_augs=3, max_augs=5):
     """
     Apply a random subset of augmentation types with random parameters.
+    All augmentations preserve original image dimensions.
     
     Args:
         image: The input image
