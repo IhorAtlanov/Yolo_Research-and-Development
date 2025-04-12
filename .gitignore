@@ -12,8 +12,13 @@ dataSet_test_640/
 Model_640_Tank/
 
 # Model
-*.pt
+yolo11n.pt
+yolov8m.pt
+yolov8n.pt
 
 # TestModel
 results/
 frames/
+
+# TrainModel
+yolo_training/
