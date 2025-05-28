@@ -1,8 +1,8 @@
 import os
 from ultralytics import YOLO
 
-def train_yolo(data_yaml_path, epochs=50, batch_size=16, img_size=640):
-    model = YOLO('yolov8n.pt')  # Використання малої моделі YOLOv8n
+def train_yolo(data_yaml_path, epochs=50, batch_size=16, img_size=640, experiment_name='test_1', lr0=0.001, lrf=0.0001):
+    model = YOLO('yolov8l.pt')  # Використання малої моделі YOLO (Приклад: yolov8m) 
     
     # Налаштування параметрів навчання
     results = model.train(
@@ -10,14 +10,18 @@ def train_yolo(data_yaml_path, epochs=50, batch_size=16, img_size=640):
         epochs=epochs,               # кількість епох
         batch=batch_size,            # розмір пакету
         imgsz=img_size,              # розмір зображення
+        name=experiment_name,        # ім'я експерименту
+        lr0=lr0,                     # початкова швидкість навчання
+        lrf=lrf,                     # кінцева швидкість навчання
+        optimizer='SGD',             # Вказуємо оптимізатор
+        #momentum=0.937,              # Вказуємо імпульс
         save=True,                   # збереження результатів
         device='0',                  # використання GPU (якщо доступний)
         workers=6,                   # кількість workers для завантаження даних
-        project='yolo_training',     # ім'я проекту
-        name='exp',                  # ім'я експерименту
-        exist_ok=True,               # перезаписати попередній експеримент
-        patience=10,                 # раннє зупинення, якщо немає покращення 20 епох
-        pretrained=False,             # використання попередньо навченої моделі
+        project='YOLO_training_test_models',     # ім'я проекту
+        exist_ok=False,              # перезаписати попередній експеримент
+        patience=10,                 # раннє зупинення, якщо немає покращення 10 епох
+        pretrained=True,             # використання попередньо навченої моделі
         augment=True                 # аугментіція на льоту (on-the-fly)
     )
     
@@ -26,8 +30,17 @@ def train_yolo(data_yaml_path, epochs=50, batch_size=16, img_size=640):
 
 def evaluate_yolo_model(model_path, data_yaml_path):
     model = YOLO(model_path)
-    results = model.val(data=data_yaml_path)
     
+    # Використання методу val для тестового набору
+    results = model.val(
+        data=data_yaml_path,         # Шлях до конфігурації даних
+        split='test',                # Вказуємо тестовий набір
+        save=True,                   # Збереження результатів, включаючи матрицю помилок
+        project='YOLO_training_test_models',     # Ім'я проекту для збереження
+        name='test_yolo11n_no_pretrained'       # Ім'я директорії для результатів (test_evaluation)
+    )
+    
+    # Виведення основних метрик
     print(f"mAP@0.5: {results.box.map50}")
     print(f"mAP@0.5:0.95: {results.box.map}")
     
@@ -36,18 +49,23 @@ def evaluate_yolo_model(model_path, data_yaml_path):
 # Приклад використання
 if __name__ == "__main__":
     # Шлях до файлу data.yaml
-    data_yaml_path = "D:\\diplom\\dataSet_test_640\\dataset.yaml"
-    
+    data_yaml_path = "D:\\diplom\\dataSet_test_640\\data.yaml"
+
+    experiment_name = 'yolo11n_no_pretrained'
+
     # Тренування моделі
     results = train_yolo(
         data_yaml_path=data_yaml_path,
-        epochs=50,
+        epochs=60,
         batch_size=16,
-        img_size=640
+        img_size=640,
+        experiment_name=experiment_name,
+        lr0=0.001,
+        lrf=0.001
     )
     
     # Шлях до найкращої моделі після навчання
-    best_model_path = os.path.join('yolo_training', 'exp', 'weights', 'best.pt')
+    best_model_path = os.path.join('YOLO_training_test_models', experiment_name, 'weights', 'best.pt')
     
     # Оцінка моделі на тестовому наборі
     evaluation_results = evaluate_yolo_model(best_model_path, data_yaml_path)
@@ -55,6 +73,6 @@ if __name__ == "__main__":
     print("Навчання та оцінка завершені!")
     
     # Інференс (виявлення об'єктів) на одному зображенні
-    model = YOLO(best_model_path)
-    results = model.predict("D:\\diplom\\data\\TANK\\Tanks\\19.jpg", save=True, conf=0.25)
-    print(f"Виявлені об'єкти: {results[0].boxes}")
+    #model = YOLO(best_model_path)
+    #results = model.predict("D:\\diplom\\data\\TANK\\Tanks\\19.jpg", save=True, conf=0.25)
+    #print(f"Виявлені об'єкти: {results[0].boxes}")

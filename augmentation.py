@@ -193,6 +193,78 @@ def apply_noise(image, max_noise_percentage=0.05):
     
     return noisy_image
 
+def apply_safe_augment(image):
+    """
+    Safe augmentation without artifacts: noise + hue shift + light brightness changes.
+    Minimal risk of chromatic aberration or other visual artifacts.
+    """
+    result = image.copy()
+    
+    print("Applying safe augmentation:")
+    
+    # Always apply hue shift (reduced range for safety)
+    print("  - hue_shift (reduced range)")
+    result = apply_hue_shift(result, min_hue=-15, max_hue=15)
+    
+    # Always apply noise (reduced amount for safety)
+    print("  - noise (reduced amount)")
+    result = apply_noise(result, max_noise_percentage=0.03)
+    
+    # Optionally add brightness OR exposure (not both to avoid over-processing)
+    if random.choice([True, False]):
+        print("  - brightness (light adjustment)")
+        result = apply_brightness(result, min_brightness=-0.15, max_brightness=0.15)
+    else:
+        print("  - exposure (light adjustment)")
+        result = apply_exposure(result, min_exposure=-0.15, max_exposure=0.15)
+    
+    return result
+
+def apply_balanced_augment(image):
+    """
+    Balanced augmentation: 2-3 augmentations from different groups.
+    Minimizes conflicts between different types of transformations.
+    """
+    result = image.copy()
+    
+    # Define augmentation groups
+    color_augs = [
+        ("hue_shift", lambda img: apply_hue_shift(img, min_hue=-20, max_hue=20)),
+        ("brightness", lambda img: apply_brightness(img, min_brightness=-0.2, max_brightness=0.2)),
+        ("exposure", lambda img: apply_exposure(img, min_exposure=-0.2, max_exposure=0.2))
+    ]
+    
+    spatial_augs = [
+        ("crop", lambda img: apply_crop(img, min_scale=0.0, max_scale=0.15)),
+        ("shift", lambda img: apply_shift(img, horizontal_shift=0.1, vertical_shift=0.1))
+        # Note: rotation excluded to avoid artifacts
+    ]
+    
+    other_augs = [
+        ("noise", lambda img: apply_noise(img, max_noise_percentage=0.04))
+    ]
+    
+    selected_augs = []
+    
+    # Always select one color augmentation
+    selected_augs.append(random.choice(color_augs))
+    
+    # 50% chance to add a spatial augmentation
+    if random.choice([True, False]):
+        selected_augs.append(random.choice(spatial_augs))
+    
+    # 70% chance to add noise
+    if random.random() < 0.7:
+        selected_augs.append(random.choice(other_augs))
+    
+    # Apply selected augmentations
+    print(f"Applying balanced augmentation ({len(selected_augs)} transformations):")
+    for i, (aug_name, aug_func) in enumerate(selected_augs):
+        print(f"  - {i+1}. {aug_name}")
+        result = aug_func(result)
+    
+    return result
+
 def apply_augment_plus(image, min_augs=3, max_augs=5):
     """
     Apply a random subset of augmentation types with random parameters.
@@ -236,6 +308,8 @@ def augment_images(folder_path, output_folder=None, aug_type='mirror', min_augs=
     
     aug_type can be:
     - 'mirror': simple horizontal mirroring
+    - 'safe': safe augmentation (noise + hue shift + light brightness changes)
+    - 'balanced': balanced augmentation (2-3 augs from different groups)
     - 'augmentplus': apply random subset of augmentations with random parameters
     
     min_augs and max_augs control how many augmentations are applied when using 'augmentplus'
@@ -274,7 +348,7 @@ def augment_images(folder_path, output_folder=None, aug_type='mirror', min_augs=
     
     # Process each image
     for i, (original_number, file_path) in enumerate(numbered_files):
-        print(f"Processing file {i+1}/{len(numbered_files)}: {os.path.basename(file_path)} (Number: {original_number})")
+        print(f"\nProcessing file {i+1}/{len(numbered_files)}: {os.path.basename(file_path)} (Number: {original_number})")
         
         # Read the image
         original_image = cv2.imread(file_path)
@@ -285,6 +359,10 @@ def augment_images(folder_path, output_folder=None, aug_type='mirror', min_augs=
         # Apply the chosen augmentation
         if aug_type.lower() == 'mirror':
             augmented_image = mirror_image(original_image)
+        elif aug_type.lower() == 'safe':
+            augmented_image = apply_safe_augment(original_image)
+        elif aug_type.lower() == 'balanced':
+            augmented_image = apply_balanced_augment(original_image)
         elif aug_type.lower() == 'augmentplus':
             augmented_image = apply_augment_plus(original_image, min_augs=min_augs, max_augs=max_augs)
         else:
@@ -304,14 +382,14 @@ def augment_images(folder_path, output_folder=None, aug_type='mirror', min_augs=
         else:
             print(f"Failed to save image: {output_path}")
     
-    print(f"Augmentation complete. Created {augmented_count} augmented images from {len(numbered_files)} original images.")
+    print(f"\nAugmentation complete. Created {augmented_count} augmented images from {len(numbered_files)} original images.")
     print(f"The augmented images are numbered from {next_number} to {next_number + augmented_count - 1}.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Augment images with various transformations and sequential numbering.')
     parser.add_argument('folder_path', help='Path to the folder containing images')
     parser.add_argument('--output', help='Path to save augmented images (optional)')
-    parser.add_argument('--type', choices=['mirror', 'augmentplus'], default='mirror',
+    parser.add_argument('--type', choices=['mirror', 'safe', 'balanced', 'augmentplus'], default='mirror',
                         help='Type of augmentation to apply (default: mirror)')
     parser.add_argument('--min-augs', type=int, default=3, 
                         help='Minimum number of augmentations to apply when using augmentplus (default: 3)')
@@ -334,5 +412,9 @@ if __name__ == "__main__":
     if args.type.lower() == 'augmentplus':
         print(f"Will apply between {args.min_augs} and {args.max_augs} random augmentations")
         print(f"Maximum noise percentage: {args.noise}")
+    elif args.type.lower() == 'safe':
+        print("Safe mode: minimal artifacts, noise + hue shift + light brightness changes")
+    elif args.type.lower() == 'balanced':
+        print("Balanced mode: 2-3 augmentations from different groups, avoiding conflicts")
     
     augment_images(folder_path, output_path, args.type, args.min_augs, args.max_augs)

@@ -10,8 +10,11 @@ data/
 dataSet_test/
 dataSet_test_640/
 Model_640_Tank/
+YOLO_evaluation/
+
 
 # Model
+yolo11m.pt
 yolo11n.pt
 yolov8m.pt
 yolov8n.pt
@@ -19,6 +22,7 @@ yolov8n.pt
 # TestModel
 results/
 frames/
+runs/
 
 # TrainModel
 yolo_training/
