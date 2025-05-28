@@ -25,4 +25,6 @@ frames/
 runs/
 
 # TrainModel
-yolo_training/
+yolo_training/yolov8l.pt 
+yolo11l.pt 
+yolov8l.pt 
