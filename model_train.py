@@ -2,7 +2,7 @@ import os
 from ultralytics import YOLO
 
 def train_yolo(data_yaml_path, epochs=50, batch_size=16, img_size=640, experiment_name='test_1', lr0=0.001, lrf=0.0001):
-    model = YOLO('yolov8l.pt')  # Використання малої моделі YOLO (Приклад: yolov8m) 
+    model = YOLO('yolo11n.pt')
     
     # Налаштування параметрів навчання
     results = model.train(
@@ -18,7 +18,7 @@ def train_yolo(data_yaml_path, epochs=50, batch_size=16, img_size=640, experimen
         save=True,                   # збереження результатів
         device='0',                  # використання GPU (якщо доступний)
         workers=6,                   # кількість workers для завантаження даних
-        project='YOLO_training_test_models',     # ім'я проекту
+        project='YOLO_final_training_best_model',     # ім'я проекту
         exist_ok=False,              # перезаписати попередній експеримент
         patience=10,                 # раннє зупинення, якщо немає покращення 10 епох
         pretrained=True,             # використання попередньо навченої моделі
@@ -36,8 +36,8 @@ def evaluate_yolo_model(model_path, data_yaml_path):
         data=data_yaml_path,         # Шлях до конфігурації даних
         split='test',                # Вказуємо тестовий набір
         save=True,                   # Збереження результатів, включаючи матрицю помилок
-        project='YOLO_training_test_models',     # Ім'я проекту для збереження
-        name='test_yolo11n_no_pretrained'       # Ім'я директорії для результатів (test_evaluation)
+        project='YOLO_final_training_best_model',     # Ім'я проекту для збереження
+        name='test_yolo11n_SGD(0_001)'       # Ім'я директорії для результатів (test_evaluation)
     )
     
     # Виведення основних метрик
@@ -51,12 +51,12 @@ if __name__ == "__main__":
     # Шлях до файлу data.yaml
     data_yaml_path = "D:\\diplom\\dataSet_test_640\\data.yaml"
 
-    experiment_name = 'yolo11n_no_pretrained'
+    experiment_name = 'yolo11n_SGD(0_001)'
 
     # Тренування моделі
     results = train_yolo(
         data_yaml_path=data_yaml_path,
-        epochs=60,
+        epochs=100,
         batch_size=16,
         img_size=640,
         experiment_name=experiment_name,
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     )
     
     # Шлях до найкращої моделі після навчання
-    best_model_path = os.path.join('YOLO_training_test_models', experiment_name, 'weights', 'best.pt')
+    best_model_path = os.path.join('YOLO_final_training_best_model', experiment_name, 'weights', 'best.pt')
     
     # Оцінка моделі на тестовому наборі
     evaluation_results = evaluate_yolo_model(best_model_path, data_yaml_path)

@@ -44,7 +44,7 @@ import numpy as np
 from pathlib import Path
 from ultralytics import YOLO
 from datetime import datetime
-from collections import deque
+import matplotlib.pyplot as plt
 
 class MemoryMonitor:
     """Клас для моніторингу використання пам'яті"""
@@ -118,9 +118,8 @@ class MemoryMonitor:
 class PerformanceTracker:
     """Клас для відстеження продуктивності"""
     
-    def __init__(self, window_size=30):
-        self.window_size = window_size
-        self.processing_times = deque(maxlen=window_size)
+    def __init__(self):
+        self.processing_times = []
         self.confidence_scores = []
         self.detection_counts = []
         self.start_time = None
@@ -515,7 +514,7 @@ def process_video(args, memory_monitor=None):
         video_writer = cv2.VideoWriter(output_path, fourcc, effective_fps, (width, height))
     
     # Створення трекера продуктивності
-    tracker = PerformanceTracker(window_size=50)
+    tracker = PerformanceTracker()
     
     # Змінні для відстеження швидкості та статистики
     frame_count = 0
@@ -570,9 +569,9 @@ def process_video(args, memory_monitor=None):
             # Отримання поточної статистики
             current_stats = tracker.get_stats()
             
-            # Виведення статистики кожні 5 секунд
+            # Виведення статистики кожні 2 секунд
             current_time = time.perf_counter()
-            if current_time - last_stats_time > 5.0:
+            if current_time - last_stats_time > 2.0:
                 if memory_monitor:
                     memory_monitor.print_memory_info(f"Кадр {frame_count}")
                 print(f"Кадр {frame_count}: FPS={current_stats['current_fps']:.1f}, "
@@ -648,6 +647,38 @@ def process_video(args, memory_monitor=None):
         
         if args.save_frames:
             print(f"Кадри збережено в {frames_path}")
+        
+        # === Нова секція: побудова та збереження графіків ===
+        try:
+            os.makedirs(args.output_dir, exist_ok=True)
+
+            # 1. FPS по кадрах
+            fps_values = [1/t for t in tracker.processing_times if t > 0]
+            plt.figure(figsize=(10, 5))
+            plt.plot(fps_values, label="FPS per frame")
+            plt.xlabel("Оброблені кадри")
+            plt.ylabel("FPS")
+            plt.title("Швидкість обробки кадрів (FPS)")
+            plt.grid(True)
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(args.output_dir, "fps_plot.png"))
+            plt.close()
+
+            # 4. Гістограма confidence
+            plt.figure(figsize=(8, 5))
+            plt.hist(tracker.confidence_scores, edgecolor='black')
+            plt.xlabel("Confidence")
+            plt.ylabel("Кількість")
+            plt.title("Гістограма впевненості виявлень")
+            plt.tight_layout()
+            plt.savefig(os.path.join(args.output_dir, "confidence_histogram.png"))
+            plt.close()
+
+            print("\nГрафіки збережено у директорії:", args.output_dir)
+
+        except Exception as e:
+            print(f"Помилка при побудові графіків: {e}")
 
 def main():
     args = parse_arguments()

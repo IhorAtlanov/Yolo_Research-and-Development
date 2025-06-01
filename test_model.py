@@ -122,19 +122,20 @@ def compare_models(model_paths, data_yaml_path):
 # Приклад використання
 if __name__ == "__main__":
     # Тестування однієї моделі
-    model_path = "D:\\diplom\\YOLO_training\\yolo11n_42_epochs\\weights\\best.pt"
     data_yaml = "D:\\diplom\\dataSet_test_640\\data.yaml"
     
+    #model_path = "D:\diplom\YOLO_final_training_best_model\yolo11n_no_pretrained_augment\weights\\best.pt"
     #results = evaluate_yolo_model(model_path, data_yaml)
-    
+
     # Порівняння кількох моделей
     models_to_compare = [
-        "D:\\diplom\\YOLO_training\\yolov8n_42_epochs\\weights\\yolov8n_42_epochs.pt",
-        "D:\\diplom\\YOLO_training\\yolov8m_31_epochs\\weights\\yolov8m_31_epochs.pt",
-        "D:\\diplom\\YOLO_training_test_models\yolov8l\\weights\\yolov8l_42_epochs.pt", 
-        "D:\\diplom\\YOLO_training\\yolo11n_33_epochs_SGD(0.001-0.001)\\weights\\yolo11n_33_epochs.pt",
-        "D:\\diplom\\YOLO_training\\yolo11m_57_epochs\\weights\\yolo11m_57_epochs.pt",
-        "D:\\diplom\\YOLO_training\\yolo11L_29_epochs\\weights\\yolo11L_29_epochs.pt"
+        "D:\\diplom\\YOLO_final_training_best_model\\yolo11n\\weights\\yolo11n_AdamW.pt",
+        "D:\\diplom\\YOLO_final_training_best_model\\yolo11n_no_pretrained\\weights\\yolo11n_no_pretrained.pt",
+        "D:\\diplom\\YOLO_final_training_best_model\\yolo11n_no_pretrained(auto_AdamW)\\weights\\yolo11n_no_pretrained(auto_AdamW).pt", 
+        "D:\\diplom\\YOLO_final_training_best_model\\yolo11n_no_pretrained(lrf_0.0001)\\weights\\yolo11n_no_pretrained(lrf_0.0001).pt",
+        "D:\\diplom\\YOLO_final_training_best_model\\yolo11n_no_pretrained_augment\\weights\\yolo11n_no_pretrained_augment.pt",
+        "D:\\diplom\\YOLO_final_training_best_model\\yolo11n_SGD\\weights\\yolo11n_SGD.pt",
+        "D:\\diplom\\YOLO_final_training_best_model\\yolo11n_SGD(0_001)\\weights\\yolo11n_SGD(0_001).pt"
     ]
     
     compare_models(models_to_compare, data_yaml)
