@@ -213,7 +213,7 @@ def parse_arguments():
                         help='Зберігати відеорезультати')
     parser.add_argument('--output-dir', type=str, default='results',
                         help='Директорія для збереження відеорезультатів')
-    parser.add_argument('--show', action='store_true', default=True,
+    parser.add_argument('--show', action='store_true', default=False,
                         help='Показувати результати')
     parser.add_argument('--frame-skip', type=int, default=1,
                         help='Обробка кожного n-го кадру (за замовчуванням 1 - без пропуску)')
@@ -569,9 +569,9 @@ def process_video(args, memory_monitor=None):
             # Отримання поточної статистики
             current_stats = tracker.get_stats()
             
-            # Виведення статистики кожні 2 секунд
+            # Виведення статистики кожні 5 секунд
             current_time = time.perf_counter()
-            if current_time - last_stats_time > 2.0:
+            if current_time - last_stats_time > 5.0:
                 if memory_monitor:
                     memory_monitor.print_memory_info(f"Кадр {frame_count}")
                 print(f"Кадр {frame_count}: FPS={current_stats['current_fps']:.1f}, "
@@ -584,14 +584,17 @@ def process_video(args, memory_monitor=None):
             cv2.putText(result_frame, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
             
             # Збереження кадру як зображення
-            if args.save_frames and len(detections) > 0:  # Зберігати тільки кадри з виявленнями
-                frame_path = os.path.join(frames_path, f"frame_{frame_count:06d}_det{len(detections)}.jpg")
+            if args.save_frames:
+                if len(detections) > 0:
+                    frame_path = os.path.join(frames_path, f"frame_{frame_count:06d}_det{len(detections)}.jpg")
+                else:
+                    frame_path = os.path.join(frames_path, f"frame_{frame_count:06d}_no_det.jpg")
                 cv2.imwrite(frame_path, result_frame)
-            
+                        
             # Запис результату у відео
             if video_writer:
                 video_writer.write(result_frame)
-            
+                
             # Показ результату
             if args.show:
                 cv2.imshow("Result", result_frame)
@@ -599,7 +602,7 @@ def process_video(args, memory_monitor=None):
                 # Вихід при натисканні 'q'
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
-    
+
     except KeyboardInterrupt:
         print("\nОбробку перервано користувачем")
     
@@ -648,12 +651,12 @@ def process_video(args, memory_monitor=None):
         if args.save_frames:
             print(f"Кадри збережено в {frames_path}")
         
-        # === Нова секція: побудова та збереження графіків ===
+        # Побудова та збереження графіків продуктивності
         try:
             os.makedirs(args.output_dir, exist_ok=True)
 
             # 1. FPS по кадрах
-            fps_values = [1/t for t in tracker.processing_times if t > 0]
+            fps_values = [1/t for t in tracker.processing_times if t > 0.0]
             plt.figure(figsize=(10, 5))
             plt.plot(fps_values, label="FPS per frame")
             plt.xlabel("Оброблені кадри")
@@ -665,7 +668,7 @@ def process_video(args, memory_monitor=None):
             plt.savefig(os.path.join(args.output_dir, "fps_plot.png"))
             plt.close()
 
-            # 4. Гістограма confidence
+            # 2. Гістограма confidence
             plt.figure(figsize=(8, 5))
             plt.hist(tracker.confidence_scores, edgecolor='black')
             plt.xlabel("Confidence")
