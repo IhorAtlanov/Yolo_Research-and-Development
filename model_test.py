@@ -123,6 +123,7 @@ class PerformanceTracker:
         self.confidence_scores = []
         self.detection_counts = []
         self.start_time = None
+        self.last_processing_time = 0  # Час останньої обробки
         
     def start_timing(self):
         """Початок вимірювання часу"""
@@ -135,6 +136,7 @@ class PerformanceTracker:
         
         processing_time = time.perf_counter() - self.start_time
         self.processing_times.append(processing_time)
+        self.last_processing_time = processing_time  # Зберігаємо останній час
         
         if detections:
             self.detection_counts.append(len(detections))
@@ -150,16 +152,22 @@ class PerformanceTracker:
         """Середній час обробки"""
         return sum(self.processing_times) / len(self.processing_times) if self.processing_times else 0
     
-    def get_current_fps(self):
-        """Поточна швидкість FPS"""
+    def get_instant_fps(self):
+        """Миттєва (instant) швидкість FPS за час інференсу останнього кадру."""
+        return 1 / self.last_processing_time if self.last_processing_time > 0 else 0
+
+    def get_avg_fps(self):
+        """Середня швидкість FPS"""
         avg_time = self.get_avg_processing_time()
         return 1 / avg_time if avg_time > 0 else 0
     
     def get_stats(self):
         """Отримання статистики"""
         stats = {
+            'last_processing_time': self.last_processing_time,
             'avg_processing_time': self.get_avg_processing_time(),
-            'current_fps': self.get_current_fps(),
+            'instant_fps': self.get_instant_fps(),
+            'avg_fps': self.get_avg_fps(),          # Середній FPS
             'total_detections': sum(self.detection_counts),
             'avg_detections_per_frame': sum(self.detection_counts) / len(self.detection_counts) if self.detection_counts else 0,
             'avg_confidence': sum(self.confidence_scores) / len(self.confidence_scores) if self.confidence_scores else 0,
@@ -522,7 +530,14 @@ def process_video(args, memory_monitor=None):
     skipped_frames = 0
     start_time_total = time.perf_counter()
     last_stats_time = time.perf_counter()
-    
+
+    #DEBUG:
+    timesINF = []
+
+    # Синхронізація GPU перед початком вимірювання
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
     # Обробка кадрів
     try:
         while True:
@@ -533,64 +548,64 @@ def process_video(args, memory_monitor=None):
             frame_count += 1
             
             # Пропуск кадрів
-            if frame_count % args.frame_skip != 0:
+            for _ in range(args.frame_skip - 1):
+                if not cap.grab():
+                    break
                 skipped_frames += 1
-                continue
             
             processed_frames += 1
             
-            # Обробка в залежності від розміру
-            use_slicing = args.process_large and (width > 1280 or height > 1280)
+            # Стандартний інференс
+            tracker.start_timing()
+            results = model.predict(frame, conf=args.conf, iou=args.iou, verbose=False)
+            result_frame = results[0].plot()
             
-            if use_slicing:
-                # Обробка через розділення на фрагменти
-                result_frame, detections = process_large_image(
-                    model, frame, args.slice_size, args.overlap, args.conf, args.iou, tracker
-                )
-            else:
-                # Стандартний інференс
-                tracker.start_timing()
-                results = model.predict(frame, conf=args.conf, iou=args.iou, verbose=False)
-                result_frame = results[0].plot()
-                
-                # Створення списку виявлень
-                boxes = results[0].boxes
-                detections = [
-                    {
-                        'box': box.xyxy.cpu().numpy()[0],
-                        'confidence': box.conf.cpu().numpy()[0],
-                        'class': box.cls.cpu().numpy()[0]
-                    }
-                    for box in boxes
-                ]
-                
-                tracker.end_timing(detections)
+            # Створення списку виявлень
+            boxes = results[0].boxes
+            detections = [
+                {
+                    'box': box.xyxy.cpu().numpy()[0],
+                    'confidence': box.conf.cpu().numpy()[0],
+                    'class': box.cls.cpu().numpy()[0]
+                }
+                for box in boxes
+            ]
+            
+            tracker.end_timing(detections)
             
             # Отримання поточної статистики
             current_stats = tracker.get_stats()
-            
+                
             # Виведення статистики кожні 5 секунд
             current_time = time.perf_counter()
             if current_time - last_stats_time > 5.0:
                 if memory_monitor:
                     memory_monitor.print_memory_info(f"Кадр {frame_count}")
-                print(f"Кадр {frame_count}: FPS={current_stats['current_fps']:.1f}, "
+                print(f"Кадр {frame_count}: FPS={current_stats['instant_fps']:.1f}, "
                       f"Об'єктів={len(detections)}, "
                       f"Час обробки={current_stats['avg_processing_time']:.4f}с")
                 last_stats_time = current_time
             
+            real_index = (processed_frames - 1)*args.frame_skip + 1
+
             # Додавання інформації на кадр
-            info_text = f"Frame: {frame_count} | Objects: {len(detections)} | FPS: {current_stats['current_fps']:.1f}"
+            info_text = f"Frame: {real_index} | Objects: {len(detections)} | FPS: {current_stats['instant_fps']:.1f}"
             cv2.putText(result_frame, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
             
             # Збереження кадру як зображення
             if args.save_frames:
                 if len(detections) > 0:
-                    frame_path = os.path.join(frames_path, f"frame_{frame_count:06d}_det{len(detections)}.jpg")
+                    frame_path = os.path.join(
+                        frames_path,
+                        f"frame_{real_index:06d}_det{len(detections)}.jpg"
+                    )
                 else:
-                    frame_path = os.path.join(frames_path, f"frame_{frame_count:06d}_no_det.jpg")
+                    frame_path = os.path.join(
+                        frames_path,
+                        f"frame_{real_index:06d}_no_det.jpg"
+                    )
                 cv2.imwrite(frame_path, result_frame)
-                        
+      
             # Запис результату у відео
             if video_writer:
                 video_writer.write(result_frame)
@@ -602,6 +617,13 @@ def process_video(args, memory_monitor=None):
                 # Вихід при натисканні 'q'
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
+                
+            #DEBUG:
+            start = time.perf_counter()
+            model.predict(frame)
+            time_taken = (time.perf_counter() - start)*1000
+            #print("Model-only inference time:", time_taken, "ms")
+            timesINF.append(time_taken)
 
     except KeyboardInterrupt:
         print("\nОбробку перервано користувачем")
@@ -630,11 +652,28 @@ def process_video(args, memory_monitor=None):
         print(f"Знайдено об'єктів: {final_stats['total_detections']:,}")
         print(f"Середня кількість об'єктів на кадр: {final_stats['avg_detections_per_frame']:.2f}")
         
+        print("\nDEBUG:")
+        print(f"Загальний час: {total_time:.3f} сек")
+        print(f"Оброблено кадрів: {processed_frames}")
+        print(f"Розрахунок FPS: {processed_frames / total_time:.2f}")
+        print(f"Час на кадр: {1000 * total_time / processed_frames:.2f} мс")
+
+        if timesINF:
+            average_time_inf_ms = sum(timesINF) / len(timesINF)
+            print("Average inference time:", average_time_inf_ms, "ms")
+        else:
+            print("No frames processed.")
+        
+        average_time_inf_s = average_time_inf_ms / 1000.0
+        theoretical_model_FPS = 1 / average_time_inf_s
+
         print("\n--- Продуктивність ---")
         print(f"Середній час обробки кадру: {final_stats['avg_processing_time']:.4f} секунд")
         print(f"Загальний час обробки: {total_time:.2f} секунд")
-        print(f"Швидкість обробки моделі: {final_stats['current_fps']:.2f} FPS")
+        print(f"Середній FPS:  {final_stats['avg_fps']:.2f} FPS")
+        print(f"Миттєва швидкість (за останній оброблений кадр): {final_stats['instant_fps']:.2f} FPS")
         print(f"Ефективна швидкість: {effective_fps:.2f} FPS")
+        print(f"Швидкість обробки моделі: {theoretical_model_FPS:.2f} FPS")
         print(f"Коефіцієнт прискорення: {args.frame_skip}x")
         
         if final_stats['avg_confidence'] > 0:
