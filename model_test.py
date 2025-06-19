@@ -21,9 +21,6 @@
     # Додаткові параметри:
     --conf 0.25           # Поріг впевненості (за замовчуванням 0.25)
     --iou 0.45            # Поріг IoU для NMS (за замовчуванням 0.45)
-    --process-large       # Включити обробку великих зображень через розділення
-    --slice-size 640      # Розмір фрагмента для розділення великих зображень
-    --overlap 0.2         # Коефіцієнт перекриття для розділення
     --device 0            # Пристрій для інференсу (CPU: 'cpu', GPU: 0,1,2...)
     --save-results        # Зберігати відеорезультати
     --output-dir results  # Директорія для збереження відеорезультатів
@@ -47,8 +44,6 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 
 class MemoryMonitor:
-    """Клас для моніторингу використання пам'яті"""
-    
     def __init__(self, device='cpu'):
         self.device = device
         self.process = psutil.Process()
@@ -211,12 +206,6 @@ def parse_arguments():
                         help='Поріг IoU для NMS (за замовчуванням 0.45)')
     parser.add_argument('--device', type=str, default='0',
                         help='Пристрій для інференсу (CPU: "cpu", GPU: 0,1,2...)')
-    parser.add_argument('--process-large', action='store_true',
-                        help='Включити обробку великих зображень через розділення')
-    parser.add_argument('--slice-size', type=int, default=640,
-                        help='Розмір фрагмента для розділення великих зображень')
-    parser.add_argument('--overlap', type=float, default=0.2,
-                        help='Коефіцієнт перекриття для розділення (0-1)')
     parser.add_argument('--save-results', action='store_true',
                         help='Зберігати відеорезультати')
     parser.add_argument('--output-dir', type=str, default='results',
@@ -234,222 +223,153 @@ def parse_arguments():
     
     return parser.parse_args()
 
-def process_large_image(model, image, slice_size=640, overlap=0.2, conf=0.25, iou=0.45, tracker=None):
-    """
-    Обробка великого зображення шляхом розділення на фрагменти
+def process_image(args, memory_monitor=None): 
+    """Обробка всіх зображень в папці""" 
+    # Завантаження моделі 
+    print("Завантаження моделі...") 
+    model = YOLO(args.model) 
+     
+    # Інформація про модель 
+    model_info = get_model_info(model) 
+    if model_info: 
+        print("\n--- Інформація про модель ---") 
+        print(f"Тип моделі: {model_info.get('model_type', 'Невідомо')}") 
+        print(f"Загальна кількість параметрів: {model_info.get('total_params', 0):,}") 
+        print(f"Навчальні параметри: {model_info.get('trainable_params', 0):,}") 
+        print(f"Розмір моделі: {model_info.get('model_size_mb', 0):.1f} MB") 
+     
+    if memory_monitor: 
+        memory_monitor.print_memory_info("Після завантаження моделі") 
+     
+    # Перевірка наявності папки або файлу 
+    if not os.path.exists(args.source): 
+        print(f"Помилка: Шлях {args.source} не знайдено") 
+        return 
+     
+    # Отримання списку зображень
+    image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif']
+    image_files = []
     
-    Параметри:
-        model: Модель YOLO
-        image: Вхідне зображення (numpy array)
-        slice_size: Розмір фрагментів
-        overlap: Коефіцієнт перекриття (0-1)
-        conf: Поріг впевненості
-        iou: Поріг IoU для NMS
-        tracker: PerformanceTracker для вимірювання часу
+    if os.path.isfile(args.source):
+        # Якщо це одиночний файл
+        image_files = [args.source]
+    elif os.path.isdir(args.source):
+        # Якщо це папка, знаходимо всі зображення
+        for file in os.listdir(args.source):
+            if any(file.lower().endswith(ext) for ext in image_extensions):
+                image_files.append(os.path.join(args.source, file))
     
-    Повертає:
-        Зображення з виявленими об'єктами
-        Список виявлень
-    """
-    if tracker:
-        tracker.start_timing()
-        
-    original_height, original_width = image.shape[:2]
-    
-    # Визначення кроку з урахуванням перекриття
-    stride = int(slice_size * (1 - overlap))
-    
-    # Створення вихідного зображення та списку всіх виявлень
-    result_image = image.copy()
-    all_detections = []
-    
-    # Тимчасове ім'я файлу для збереження фрагментів
-    temp_dir = os.path.join(os.getcwd(), 'temp_slices')
-    os.makedirs(temp_dir, exist_ok=True)
-    
-    try:
-        # Розділення зображення на фрагменти та обробка кожного
-        slice_count = 0
-        for y in range(0, original_height, stride):
-            for x in range(0, original_width, stride):
-                # Визначення координат фрагменту
-                x2 = min(x + slice_size, original_width)
-                y2 = min(y + slice_size, original_height)
-                
-                # Врахування залишків по краях
-                if x2 == original_width:
-                    x = max(0, x2 - slice_size)
-                if y2 == original_height:
-                    y = max(0, y2 - slice_size)
-                
-                # Виділення фрагменту
-                slice_img = image[y:y2, x:x2]
-                
-                # Збереження фрагменту
-                temp_slice_path = os.path.join(temp_dir, f'slice_{slice_count}.jpg')
-                cv2.imwrite(temp_slice_path, slice_img)
-                slice_count += 1
-                
-                # Детекція на фрагменті
-                results = model.predict(temp_slice_path, conf=conf, iou=iou, verbose=False)
-                
-                # Якщо є виявлення, додаємо їх із коригуванням координат
-                if len(results[0].boxes) > 0:
-                    boxes = results[0].boxes.xyxy.cpu().numpy()
-                    confidences = results[0].boxes.conf.cpu().numpy()
-                    classes = results[0].boxes.cls.cpu().numpy()
-                    
-                    for box, confidence, cls in zip(boxes, confidences, classes):
-                        # Додавання зміщення до координат
-                        adjusted_box = [
-                            box[0] + x,  # x1
-                            box[1] + y,  # y1
-                            box[2] + x,  # x2
-                            box[3] + y,  # y2
-                        ]
-                        
-                        all_detections.append({
-                            'box': adjusted_box,
-                            'confidence': confidence,
-                            'class': cls
-                        })
-        
-        # Додавання NMS для фільтрування дублікатів
-        if all_detections:
-            boxes = np.array([d['box'] for d in all_detections])
-            confidences = np.array([d['confidence'] for d in all_detections])
-            
-            # Використання NMS для фільтрування перекриваючих боксів
-            indices = cv2.dnn.NMSBoxes(boxes.tolist(), confidences.tolist(), conf, iou)
-            
-            if len(indices) > 0:
-                filtered_detections = [all_detections[i] for i in indices.flatten()]
-            else:
-                filtered_detections = []
-            
-            # Візуалізація виявлень
-            for detection in filtered_detections:
-                x1, y1, x2, y2 = [int(c) for c in detection['box']]
-                confidence = detection['confidence']
-                
-                # Малювання боксу
-                cv2.rectangle(result_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                
-                # Додавання тексту
-                label = f"Tank {confidence:.2f}"
-                cv2.putText(result_image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            
-            final_detections = filtered_detections
-        else:
-            final_detections = []
-            
-    finally:
-        # Видалення тимчасової директорії
-        if os.path.exists(temp_dir):
-            for file in os.listdir(temp_dir):
-                os.remove(os.path.join(temp_dir, file))
-            os.rmdir(temp_dir)
-    
-    if tracker:
-        tracker.end_timing(final_detections)
-    
-    return result_image, final_detections
-
-def process_image(args, memory_monitor=None):
-    """Обробка окремого зображення"""
-    # Завантаження моделі
-    print("Завантаження моделі...")
-    model = YOLO(args.model)
-    
-    # Інформація про модель
-    model_info = get_model_info(model)
-    if model_info:
-        print("\n--- Інформація про модель ---")
-        print(f"Тип моделі: {model_info.get('model_type', 'Невідомо')}")
-        print(f"Загальна кількість параметрів: {model_info.get('total_params', 0):,}")
-        print(f"Навчальні параметри: {model_info.get('trainable_params', 0):,}")
-        print(f"Розмір моделі: {model_info.get('model_size_mb', 0):.1f} MB")
-    
-    if memory_monitor:
-        memory_monitor.print_memory_info("Після завантаження моделі")
-    
-    # Перевірка наявності файлу
-    if not os.path.exists(args.source):
-        print(f"Помилка: Файл {args.source} не знайдено")
+    if not image_files:
+        print("Помилка: Не знайдено зображень для обробки")
         return
     
-    # Завантаження зображення
-    image = cv2.imread(args.source)
+    print(f"Знайдено зображень для обробки: {len(image_files)}")
     
-    # Створення трекера продуктивності
-    tracker = PerformanceTracker()
+    # Прогрів моделі [WARMUP] на першому зображенні
+    warmup_iters = getattr(args, 'warmup_iters', 5)
+    if image_files:
+        first_img = image_files[0]
+        img = cv2.imread(first_img)
+        if img is not None:
+            print(f"[WARMUP] Виконуємо {warmup_iters} непублічних інференсів для прогріву моделі на зображенні {first_img}...")
+            for _ in range(warmup_iters):
+                _ = model.predict(img, conf=args.conf, iou=args.iou, verbose=False)
+            print("[WARMUP] Прогрів завершено, переходимо до обробки зображень.")
+        else:
+            print(f"[WARMUP] Не вдалося завантажити зображення {first_img}; пропускаємо warmup.")
+
+    # Загальні змінні для статистик
+    all_processing_times = []
+    all_detections_count = []
+    all_confidences = []
+    processed_images = 0
     
-    # Обробка в залежності від розміру
-    height, width = image.shape[:2]
-    use_slicing = args.process_large and (width > 1280 or height > 1280)
+    # Обробка кожного зображення
+    for i, image_path in enumerate(image_files, 1):
+        print(f"\nОбробка зображення {i}/{len(image_files)}: {os.path.basename(image_path)}")
+        
+        try:
+            # Створення трекера продуктивності для кожного зображення
+            tracker = PerformanceTracker()
+            
+            # Інференс
+            tracker.start_timing()
+            results = model.predict(image_path, conf=args.conf, iou=args.iou)
+            
+            # Отримання зображення з виявленнями
+            result_image = results[0].plot()
+            
+            # Створення списку виявлень
+            boxes = results[0].boxes
+            detections = [
+                {
+                    'box': box.xyxy.cpu().numpy()[0],
+                    'confidence': box.conf.cpu().numpy()[0],
+                    'class': box.cls.cpu().numpy()[0]
+                }
+                for box in boxes
+            ]
+            
+            tracker.end_timing(detections)
+            stats = tracker.get_stats()
+            
+            # Збір статистик
+            all_processing_times.append(stats['avg_processing_time'])
+            all_detections_count.append(len(detections))
+            
+            if detections:
+                confidences = [det['confidence'] for det in detections]
+                all_confidences.extend(confidences)
+            
+            print(f"  Знайдено об'єктів: {len(detections)}")
+            print(f"  Час обробки: {stats['avg_processing_time']:.4f} секунд")
+            
+            # Додавання інформації на зображення
+            info_text = f"Objects: {len(detections)}  Time: {stats['avg_processing_time']:.3f}s"
+            cv2.putText(result_image, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            
+            # Збереження результатів
+            if args.save_results:
+                os.makedirs(args.output_dir, exist_ok=True)
+                output_path = os.path.join(
+                    args.output_dir, 
+                    f"detection_{Path(image_path).stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                )
+                cv2.imwrite(output_path, result_image)
+                print(f"  Результат збережено в {output_path}")
+            
+            processed_images += 1
+            
+        except Exception as e:
+            print(f"  Помилка при обробці {image_path}: {str(e)}")
+            continue
     
-    if use_slicing:
-        print(f"Обробка великого зображення ({width}x{height}) через розділення...")
-        result_image, detections = process_large_image(
-            model, image, args.slice_size, args.overlap, args.conf, args.iou, tracker
-        )
+    # Розрахунок та виведення середніх метрик
+    if processed_images > 0:
+        avg_processing_time = sum(all_processing_times) / len(all_processing_times)
+        avg_detections = sum(all_detections_count) / len(all_detections_count)
+        total_detections = sum(all_detections_count)
+        
+        print(f"\n--- Загальні результати по {processed_images} зображеннях ---")
+        print(f"Середній час обробки: {avg_processing_time:.4f} секунд")
+        print(f"Середня кількість об'єктів на зображення: {avg_detections:.1f}")
+        print(f"Загальна кількість виявлених об'єктів: {total_detections}")
+        
+        if all_confidences:
+            avg_confidence = sum(all_confidences) / len(all_confidences)
+            min_confidence = min(all_confidences)
+            max_confidence = max(all_confidences)
+            print(f"Середня впевненість по всіх детекціях: {avg_confidence:.3f}")
+            print(f"Мін/макс впевненість: {min_confidence:.3f}/{max_confidence:.3f}")
+        else:
+            print("Об'єктів не знайдено")
     else:
-        # Стандартний інференс
-        tracker.start_timing()
-        results = model.predict(args.source, conf=args.conf, iou=args.iou)
+        print("Жодне зображення не було успішно оброблено")
         
-        # Отримання зображення з виявленнями
-        result_image = results[0].plot()
-        
-        # Створення списку виявлень
-        boxes = results[0].boxes
-        detections = [
-            {
-                'box': box.xyxy.cpu().numpy()[0],
-                'confidence': box.conf.cpu().numpy()[0],
-                'class': box.cls.cpu().numpy()[0]
-            }
-            for box in boxes
-        ]
-        
-        tracker.end_timing(detections)
+    if memory_monitor: 
+        memory_monitor.print_memory_info("Після обробки всіх зображень")
     
-    # Отримання статистики
-    stats = tracker.get_stats()
-    
-    # Виведення інформації
-    print("\n--- Результати обробки зображення ---")
-    print(f"Знайдено об'єктів: {len(detections)}")
-    print(f"Час обробки: {stats['avg_processing_time']:.4f} секунд")
-    if detections:
-        print(f"Середня впевненість: {stats['avg_confidence']:.3f}")
-        print(f"Мін/макс впевненість: {stats['min_confidence']:.3f}/{stats['max_confidence']:.3f}")
-    
-    if memory_monitor:
-        memory_monitor.print_memory_info("Після обробки зображення")
-    
-    # Додавання інформації на зображення
-    info_text = f"Objects: {len(detections)}  Time: {stats['avg_processing_time']:.3f}s"
-    cv2.putText(result_image, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-    
-    # Збереження результатів
-    if args.save_results:
-        os.makedirs(args.output_dir, exist_ok=True)
-        output_path = os.path.join(
-            args.output_dir, 
-            f"detection_{Path(args.source).stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-        )
-        cv2.imwrite(output_path, result_image)
-        print(f"Результат збережено в {output_path}")
-    
-    # Показ результату
-    if args.show:
-        cv2.namedWindow("Result", cv2.WINDOW_NORMAL)
-        cv2.imshow("Result", result_image)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-    
-    return result_image, detections
+    return processed_images, total_detections if processed_images > 0 else 0
 
 def process_video(args, memory_monitor=None):
     """Обробка відео або потоку з вебкамери з підтримкою пропуску кадрів і збереження окремих кадрів"""
@@ -524,6 +444,37 @@ def process_video(args, memory_monitor=None):
     # Створення трекера продуктивності
     tracker = PerformanceTracker()
     
+    # === Налаштування логування ===
+    # Створюємо директорію для збереження логів (якщо її ще немає)
+    logs_dir = os.path.join(os.getcwd(), "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    # Формуємо ім'я лог-файла з міткою часу
+    log_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filepath = os.path.join(logs_dir, f"video_log_{log_timestamp}.csv")
+    # Відкриваємо файл для запису (у форматі CSV)
+    log_file = open(log_filepath, "w", encoding="utf-8")
+    # Записуємо заголовок (назви стовпців)
+    log_file.write("Timestamp,Frame,ProcessingTime,InstantFPS,Detections,AvgConfidence,MinConfidence,MaxConfidence,AvgBoxArea,FrameRes,InputRes,SkippedFrames\n")
+    # === Кінець налаштування логування ===
+
+    # [WARMUP]
+    ret, warmup_frame = cap.read()
+    if ret:
+        # Кількість ітерацій прогріву (можна налаштувати через args або хардкодом)
+        warmup_iters = 5
+        print(f"[WARMUP] Виконуємо {warmup_iters} непублічних інференсів для прогріву моделі...")
+        for _ in range(warmup_iters):
+            _ = model.predict(warmup_frame, conf=args.conf, iou=args.iou, verbose=False)
+        # Скидаємо положення відео назад до початку, щоб не втратити кадр
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        print("[WARMUP] Прогрів завершено, повертаємося до обробки відео.")
+    else:
+        print("[WARMUP] Не вдалося отримати перший кадр для прогріву; пропускаємо warmup.")
+
+    # Синхронізація GPU перед початком вимірювання
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
     # Змінні для відстеження швидкості та статистики
     frame_count = 0
     processed_frames = 0
@@ -533,10 +484,6 @@ def process_video(args, memory_monitor=None):
 
     #DEBUG:
     timesINF = []
-
-    # Синхронізація GPU перед початком вимірювання
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
 
     # Обробка кадрів
     try:
@@ -570,8 +517,47 @@ def process_video(args, memory_monitor=None):
                 }
                 for box in boxes
             ]
-            
-            tracker.end_timing(detections)
+
+            # === [НОВИЙ БЛОК ЛОГУВАННЯ] ===
+            processing_time = tracker.end_timing(detections)
+            instant_fps = tracker.get_instant_fps()
+            det_count = len(detections)
+
+            confidences_frame = [d['confidence'] for d in detections]
+            avg_conf_frame = sum(confidences_frame) / det_count if det_count > 0 else 0.0
+            max_conf = max(confidences_frame) if confidences_frame else 0.0
+            min_conf = min(confidences_frame) if confidences_frame else 0.0
+
+            # Розрахунок середньої площі об’єктів
+            areas = [
+                (d['box'][2] - d['box'][0]) * (d['box'][3] - d['box'][1])
+                for d in detections
+            ]
+            avg_area = sum(areas) / det_count if det_count > 0 else 0.0
+
+            # Розміри кадру
+            frame_height, frame_width = frame.shape[:2]
+
+            # Розміри вхідного зображення для моделі (припускаємо, що model.predict(...) повертає scaled результат)
+            input_resolution = results[0].orig_shape  # (height, width)
+
+            log_time = datetime.now().isoformat(sep=' ', timespec='seconds')
+            log_file.write(
+                f"{log_time},"  # Timestamp
+                f"{(processed_frames - 1) * args.frame_skip + 1},"  # Frame
+                f"{processing_time:.4f},"  # ProcessingTime
+                f"{instant_fps:.2f},"  # InstantFPS
+                f"{det_count},"  # Detections
+                f"{avg_conf_frame:.3f},"  # AvgConfidence
+                f"{min_conf:.3f},"  # MinConfidence
+                f"{max_conf:.3f},"  # MaxConfidence
+                f"{avg_area:.1f},"  # AvgBoxArea
+                f"{frame_width}x{frame_height},"  # FrameRes
+                f"{input_resolution[1]}x{input_resolution[0]},"  # InputRes
+                f"{skipped_frames}"  # SkippedFrames
+                "\n"
+            )
+            # === [КІНЕЦЬ БЛОКУ ЛОГУВАННЯ] ===
             
             # Отримання поточної статистики
             current_stats = tracker.get_stats()
@@ -629,6 +615,9 @@ def process_video(args, memory_monitor=None):
         print("\nОбробку перервано користувачем")
     
     finally:
+        # Закриваємо лог-файл (дуже важливо!)
+        log_file.close()
+
         # Розрахунок фінальної статистики
         total_time = time.perf_counter() - start_time_total
         final_stats = tracker.get_stats()
@@ -670,10 +659,10 @@ def process_video(args, memory_monitor=None):
         print("\n--- Продуктивність ---")
         print(f"Середній час обробки кадру: {final_stats['avg_processing_time']:.4f} секунд")
         print(f"Загальний час обробки: {total_time:.2f} секунд")
-        print(f"Середній FPS:  {final_stats['avg_fps']:.2f} FPS")
         print(f"Миттєва швидкість (за останній оброблений кадр): {final_stats['instant_fps']:.2f} FPS")
         print(f"Ефективна швидкість: {effective_fps:.2f} FPS")
-        print(f"Швидкість обробки моделі: {theoretical_model_FPS:.2f} FPS")
+        print(f"Середній FPS: {final_stats['avg_fps']:.2f} FPS")
+        print(f"Теоретична швидкість обробки моделі: {theoretical_model_FPS:.2f} FPS")
         print(f"Коефіцієнт прискорення: {args.frame_skip}x")
         
         if final_stats['avg_confidence'] > 0:
@@ -698,6 +687,11 @@ def process_video(args, memory_monitor=None):
             fps_values = [1/t for t in tracker.processing_times if t > 0.0]
             plt.figure(figsize=(10, 5))
             plt.plot(fps_values, label="FPS per frame")
+
+            # Використовуємо метод get_avg_fps() замість ручного обчислення
+            avg_fps = tracker.get_avg_fps()
+            plt.axhline(avg_fps, color='red', linestyle='--', label=f"Avg FPS: {avg_fps:.2f}")
+
             plt.xlabel("Оброблені кадри")
             plt.ylabel("FPS")
             plt.title("Швидкість обробки кадрів (FPS)")
@@ -710,6 +704,9 @@ def process_video(args, memory_monitor=None):
             # 2. Гістограма confidence
             plt.figure(figsize=(8, 5))
             plt.hist(tracker.confidence_scores, edgecolor='black')
+            avg_conf = np.mean(tracker.confidence_scores)
+            plt.axvline(avg_conf, color='red', linestyle='--', label=f"Avg: {avg_conf:.2f}")
+            plt.legend()
             plt.xlabel("Confidence")
             plt.ylabel("Кількість")
             plt.title("Гістограма впевненості виявлень")
