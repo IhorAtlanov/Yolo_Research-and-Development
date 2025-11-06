@@ -5,31 +5,13 @@ __pycache__/
 # Environment
 venv
 
-# DataSet
-data/
-dataSet_test/
-dataSet_test_640/
-Model_640_Tank/
-YOLO_evaluation/
-
 # Model
-yolo11m.pt
-yolo11n.pt
-yolov8m.pt
-yolov8n.pt
-yolov8l.pt 
-yolo11l.pt 
-yolov8l.pt 
+.pt
 
 # TestModel
 results/
 frames/
 runs/
 
-# TrainModel
-yolo_training/
-YOLO_final_training_best_model/
-
 .idea
 logs/
-Final_Test/
