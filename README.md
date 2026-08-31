@@ -1,4 +1,4 @@
-# YOLO Multi-Platform Inference
+# YOLO Multi-Platform Detection
 
 A comprehensive **YOLO object-detection pipeline** for training, evaluating, testing, optimizing, and deploying tank-detection models across multiple platforms: **PyTorch / CUDA**, **TensorFlow Lite**, **TensorRT (ONNX/Engine)**, and **RKNN** (Rockchip NPU: RK3588 et al.).
 
