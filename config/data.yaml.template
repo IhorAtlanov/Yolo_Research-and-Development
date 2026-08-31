@@ -1,15 +1,70 @@
-# data.yaml.template
-# Ultralytics dataset configuration template.
-# Copy this file to ../../data/data.yaml (i.e. <repo>/data/data.yaml) and set
-# the absolute paths to your train/val/test image directories.
+# For example, in the new versions, this is done using data.yaml
 
-# Path to the dataset root (absolute path is recommended)
-path: /absolute/path/to/dataset
+# Paths to Data
+train: /path/to/train/images
+val: /path/to/validation/images
 
-train: images/train
-val: images/val
-test: images/test
-
-# List of class names in the same order as the label index
+# Class
 names:
   0: tank
+  1: vehicle
+  # Add other classes...
+
+#----------------------------------------------------------For YOLOv8-----------------------------------------------------
+# Augmentation Parameters
+  augment:
+  # HSV-простір
+  hsv_h: 0.015  # hue shift, range 0–1
+  hsv_s: 0.7    # saturation shift (saturation)
+  hsv_v: 0.4    # brightness shift (value)
+  
+  # Geometric Transformations
+  degrees: 15.0  # turn: від -15° до +15°
+  translate: 0.15  # landslide: ±15% horizontally and vertically
+  scale: 0.5    # scaling: ±50%
+  shear: 0.0    # image shift
+  perspective: 0.0  # promising transformations
+  
+  # Flipping
+  flipud: 0.0   # probability of vertical overturning
+  fliplr: 0.5   # probability of mirror reflection
+  
+  # Complex augmentations
+  mosaic: 1.0   # the likelihood of using mosaic
+  mixup: 0.15   # probability of a mix-up
+  copy_paste: 0.0  # Copying and pasting segments
+#----------------------------------------------------------For YOLOv11-----------------------------------------------------
+augment:
+  # Basic HSV Transformations
+  hsv_h: 0.015  # color shift (hue)
+  hsv_s: 0.7    # saturation shift (saturation)
+  hsv_v: 0.4    # brightness shift (value)
+  
+  # Geometric Transformations
+  degrees: 15.0  # turn: від -15° до +15°
+  translate: 0.15  # landslide: ±15% horizontally and vertically 
+  scale: 0.5    # scaling
+  shear: 0.3    # image shift
+  perspective: 0.001  # promising transformations
+  
+  # Flipping
+  flipud: 0.1   # probability of vertical overturning
+  fliplr: 0.5   # probability of mirror reflection
+  
+  # Complex augmentations
+  mosaic: 1.0   # probability of mosaicism
+  mixup: 0.3    # probability of a mix-up
+  copy_paste: 0.3  # Copying and pasting object segments
+  
+  # New YOLOv11 parameters
+  blur: 0.01    # random blurring
+  motion_blur: 0.01  # lubrication effect
+  noise: 0.05   # adding noise (maximum percentage of pixels = 5%)
+  cutout: 0.3   # cutting out random areas
+  weather: 0.1  # simulation of weather conditions
+  shadows: 0.2  # shadow simulation
+  
+  # Color Correction Settings
+  contrast: 0.3   # contrast: ±30%
+  brightness: 0.25 # brightness: від -25% до +25%
+  exposure: 0.25   # exhibition: від -25% до +25%
