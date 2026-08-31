@@ -1,0 +1,15 @@
+# data.yaml.template
+# Ultralytics dataset configuration template.
+# Copy this file to ../../data/data.yaml (i.e. <repo>/data/data.yaml) and set
+# the absolute paths to your train/val/test image directories.
+
+# Path to the dataset root (absolute path is recommended)
+path: /absolute/path/to/dataset
+
+train: images/train
+val: images/val
+test: images/test
+
+# List of class names in the same order as the label index
+names:
+  0: tank

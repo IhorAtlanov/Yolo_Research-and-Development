@@ -1,17 +1,36 @@
-# Byte-compiled
+# Byte-compiled / cache
 __pycache__/
+*.py[cod]
+*.egg-info/
 .vs
+.idea/
 
 # Environment
-venv
+.venv/
+venv/
 
-# Model
-.pt
+# Model artifacts (large binaries are not versioned)
+# Kept out of git; directories are preserved via .gitkeep
+models/**/*.pt
+models/**/*.onnx
+models/**/*.engine
+models/**/*.tflite
+models/**/*.rknn
+models/**/saved_model.pb
+models/**/*.pb
 
-# TestModel
+# Datasets & media (not versioned)
+data/*
+!data/.gitkeep
+
+# Outputs / logs / test results
+outputs/*
+!outputs/.gitkeep
 results/
 frames/
 runs/
-
-.idea
 logs/
+inference_results/
+video_inference_results/
+*.mp4
+*.csv

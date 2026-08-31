@@ -1,1 +1,10 @@
-ConvertToFormat_TF_lite.py text eol=lf
+# Ensure consistent line endings for Python source files
+*.py text eol=lf
+*.sh text eol=lf
+
+# Binary model artifacts
+*.pt binary
+*.onnx binary
+*.engine binary
+*.tflite binary
+*.rknn binary

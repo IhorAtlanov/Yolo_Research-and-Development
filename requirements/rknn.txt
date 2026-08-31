@@ -1,0 +1,3 @@
+-r base.txt
+# Rockchip NPU toolkit - only install when targeting RKNN deployment
+# rknn-toolkit2
